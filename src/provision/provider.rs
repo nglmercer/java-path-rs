@@ -72,8 +72,31 @@ pub struct ReleaseRequest {
     pub architecture: Architecture,
     /// JDK or JRE image.
     pub kind: JavaKind,
-    /// Include early-access builds.
-    pub include_prerelease: bool,
+    /// Which channel to query.
+    pub release_type: ReleaseType,
+}
+
+/// Which release channel to query.
+///
+/// These are separate channels, not cumulative filters: `EarlyAccess` returns
+/// early-access builds *instead of* general-availability ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReleaseType {
+    /// General availability. The default.
+    #[default]
+    GeneralAvailability,
+    /// Early access builds only.
+    EarlyAccess,
+}
+
+impl ReleaseType {
+    /// The Adoptium API token for this channel.
+    pub fn api_name(self) -> &'static str {
+        match self {
+            ReleaseType::GeneralAvailability => "ga",
+            ReleaseType::EarlyAccess => "ea",
+        }
+    }
 }
 
 impl Default for ReleaseRequest {
@@ -83,7 +106,7 @@ impl Default for ReleaseRequest {
             platform: Platform::current(),
             architecture: Architecture::current(),
             kind: JavaKind::Jdk,
-            include_prerelease: false,
+            release_type: ReleaseType::default(),
         }
     }
 }
@@ -110,6 +133,12 @@ impl ReleaseRequest {
     /// Request a JRE image instead of a JDK.
     pub fn jre(mut self) -> Self {
         self.kind = JavaKind::Jre;
+        self
+    }
+
+    /// Query the early-access channel instead of general availability.
+    pub fn early_access(mut self) -> Self {
+        self.release_type = ReleaseType::EarlyAccess;
         self
     }
 }

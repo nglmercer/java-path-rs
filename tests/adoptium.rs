@@ -43,9 +43,36 @@ fn version_spec_defaults_to_latest_lts() {
 #[test]
 fn knows_which_versions_are_lts() {
     use java_path::AdoptiumProvider;
-    assert!(AdoptiumProvider::is_lts(21));
-    assert!(AdoptiumProvider::is_lts(17));
-    assert!(!AdoptiumProvider::is_lts(22));
+    assert!(AdoptiumProvider::is_known_lts(21));
+    assert!(AdoptiumProvider::is_known_lts(17));
+    assert!(!AdoptiumProvider::is_known_lts(22));
+}
+
+/// musl builds need Adoptium's separate `alpine-linux` target: a glibc JDK
+/// does not run on Alpine.
+#[test]
+fn musl_maps_to_alpine_linux() {
+    assert_eq!(Platform::AlpineLinux.adoptium_os(), Some("alpine-linux"));
+    assert_eq!(Platform::parse("alpine-linux"), Platform::AlpineLinux);
+    assert_eq!(Platform::parse("musl"), Platform::AlpineLinux);
+
+    // A JDK release file says plain "Linux" on Alpine too, so the two must be
+    // treated as interchangeable when matching discovered installations.
+    assert!(Platform::Linux.is_compatible_with(Platform::AlpineLinux));
+    assert!(Platform::AlpineLinux.is_compatible_with(Platform::Linux));
+    assert!(!Platform::Linux.is_compatible_with(Platform::Windows));
+}
+
+#[test]
+fn release_channels_are_explicit_and_not_cumulative() {
+    use java_path::{ReleaseRequest, ReleaseType};
+    assert_eq!(ReleaseType::default(), ReleaseType::GeneralAvailability);
+    assert_eq!(ReleaseType::GeneralAvailability.api_name(), "ga");
+    assert_eq!(ReleaseType::EarlyAccess.api_name(), "ea");
+    assert_eq!(
+        ReleaseRequest::default().early_access().release_type,
+        ReleaseType::EarlyAccess
+    );
 }
 
 #[tokio::test]
@@ -78,7 +105,10 @@ async fn resolves_the_latest_and_latest_lts_releases() {
 
     let lts = provider.latest_lts().await.unwrap();
     let latest = provider.latest_feature().await.unwrap();
-    assert!(AdoptiumProvider::is_lts(lts), "{lts} should be an LTS");
+    assert!(
+        provider.lts_releases().await.unwrap().contains(&lts),
+        "{lts} should be an LTS"
+    );
     assert!(
         latest >= lts,
         "latest {latest} should be >= latest LTS {lts}"

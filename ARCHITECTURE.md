@@ -23,7 +23,8 @@ already covers those, and including them would make the public API unnecessarily
 
 | OS | Status |
 | -- | ------ |
-| Linux (x86_64, aarch64) | supported |
+| Linux glibc (x86_64, aarch64) | supported |
+| Linux musl / Alpine | supported — a separate Adoptium target (`alpine-linux`); glibc builds do not run there |
 | macOS (x86_64, arm64) | supported |
 | Windows (x86_64) | supported |
 | Termux / Android | experimental — discovery only, no provisioning |
@@ -76,7 +77,11 @@ version → source priority → path. Unknown architecture/platform is treated a
 
 ### `provision`
 `JdkProvider` is the vendor abstraction (async fn in trait, no `async-trait`
-dependency). `AdoptiumProvider` implements it against the Adoptium v3 API. Adding
+dependency). `AdoptiumProvider` implements it against the Adoptium v3 API. The LTS list comes from
+the API's `available_lts_releases` rather than a hardcoded constant, and "latest"
+resolution walks candidate feature versions newest-first until one actually has a binary
+for the requested OS and architecture — a version can appear in `available_releases`
+without every combination existing. Adding
 Corretto, Zulu, Microsoft or GraalVM means adding a provider, not changing the public
 API.
 

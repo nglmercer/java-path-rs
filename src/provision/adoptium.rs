@@ -8,8 +8,11 @@ use serde::Deserialize;
 /// Default Adoptium API root.
 pub const DEFAULT_API_BASE: &str = "https://api.adoptium.net/v3";
 
-/// Feature versions Adoptium publishes as long-term support.
-pub const LTS_VERSIONS: &[u32] = &[8, 11, 17, 21, 25];
+/// Feature versions known to be long-term support at the time of writing.
+///
+/// Only a fallback: [`AdoptiumProvider::lts_releases`] asks the API, so a new
+/// LTS does not require a new release of this crate.
+pub const KNOWN_LTS_VERSIONS: &[u32] = &[8, 11, 17, 21, 25];
 
 /// Provider backed by the Adoptium v3 API.
 #[derive(Debug, Clone)]
@@ -47,9 +50,44 @@ impl AdoptiumProvider {
         self
     }
 
-    /// `true` when `major` is a long-term-support feature version.
-    pub fn is_lts(major: u32) -> bool {
-        LTS_VERSIONS.contains(&major)
+    /// `true` when `major` is a long-term-support version according to the
+    /// built-in list.
+    ///
+    /// Prefer [`AdoptiumProvider::lts_releases`], which asks the API and so
+    /// stays correct as new LTS versions appear.
+    pub fn is_known_lts(major: u32) -> bool {
+        KNOWN_LTS_VERSIONS.contains(&major)
+    }
+
+    /// The LTS feature versions the API reports, newest first.
+    pub async fn lts_releases(&self) -> Result<Vec<u32>> {
+        let info: AvailableReleases = self
+            .get_json(&format!("{}/info/available_releases", self.base_url))
+            .await?;
+        let mut versions = if info.available_lts_releases.is_empty() {
+            info.available_releases
+                .iter()
+                .copied()
+                .filter(|v| Self::is_known_lts(*v))
+                .collect()
+        } else {
+            info.available_lts_releases
+        };
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        Ok(versions)
+    }
+
+    /// Feature versions to try, newest first, for a version specification.
+    ///
+    /// A version can appear in `available_releases` without every OS and
+    /// architecture combination having a binary, so callers walk this list
+    /// until one actually yields a build for the requested target.
+    async fn candidates(&self, spec: VersionSpec) -> Result<Vec<u32>> {
+        Ok(match spec {
+            VersionSpec::Exact(major) => vec![major],
+            VersionSpec::LatestLts => self.lts_releases().await?,
+            VersionSpec::Latest => self.available_releases().await?,
+        })
     }
 
     /// Feature versions currently available, newest first.
@@ -81,7 +119,7 @@ impl AdoptiumProvider {
                 info.available_releases
                     .iter()
                     .copied()
-                    .filter(|v| Self::is_lts(*v))
+                    .filter(|v| Self::is_known_lts(*v))
                     .max()
             })
             .ok_or_else(|| Error::NoRelease("no LTS version reported by the API".to_string()))
@@ -122,17 +160,41 @@ impl JdkProvider for AdoptiumProvider {
             JavaKind::Jre => "jre",
         };
 
-        let major = match request.version {
-            VersionSpec::Exact(major) => major,
-            VersionSpec::LatestLts => self.latest_lts().await?,
-            VersionSpec::Latest => self.latest_feature().await?,
-        };
+        let candidates = self.candidates(request.version).await?;
+        let release_type = request.release_type.api_name();
 
-        let release_type = if request.include_prerelease {
-            "ea"
-        } else {
-            "ga"
-        };
+        // Walk newest-first until a version actually has a binary for this
+        // target, rather than assuming the newest one does.
+        let mut last_error = None;
+        for major in candidates {
+            match self
+                .feature_release(major, release_type, os, arch, image, &request)
+                .await
+            {
+                Ok(releases) if !releases.is_empty() => return Ok(releases),
+                Ok(_) => {}
+                Err(e) => last_error = Some(e),
+            }
+        }
+
+        Err(last_error
+            .unwrap_or_else(|| Error::NoRelease(format!("no {image} build for {os}/{arch}"))))
+    }
+}
+
+impl AdoptiumProvider {
+    /// Fetch and map the binaries of one feature release.
+    async fn feature_release(
+        &self,
+        major: u32,
+        release_type: &str,
+        os: &str,
+        arch: &str,
+        image: &str,
+        request: &ReleaseRequest,
+    ) -> Result<Vec<JdkRelease>> {
+        let lts = self.lts_releases().await.unwrap_or_default();
+
         let url = format!(
             "{base}/assets/feature_releases/{major}/{release_type}\
 ?architecture={arch}&image_type={image}&jvm_impl=hotspot&os={os}\
@@ -167,16 +229,15 @@ impl JdkProvider for AdoptiumProvider {
                     platform: Platform::parse(&binary.os),
                     architecture: Architecture::parse(&binary.architecture),
                     kind: request.kind,
-                    lts: Self::is_lts(major),
+                    lts: if lts.is_empty() {
+                        Self::is_known_lts(major)
+                    } else {
+                        lts.contains(&major)
+                    },
                 });
             }
         }
 
-        if releases.is_empty() {
-            return Err(Error::NoRelease(format!(
-                "no {image} {major} build for {os}/{arch}"
-            )));
-        }
         Ok(releases)
     }
 }
@@ -184,6 +245,8 @@ impl JdkProvider for AdoptiumProvider {
 #[derive(Debug, Deserialize)]
 struct AvailableReleases {
     available_releases: Vec<u32>,
+    #[serde(default)]
+    available_lts_releases: Vec<u32>,
     most_recent_lts: Option<u32>,
     #[serde(default)]
     most_recent_feature_release: Option<u32>,

@@ -10,8 +10,11 @@ use std::path::PathBuf;
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 #[non_exhaustive]
 pub enum Platform {
-    /// Linux (glibc or musl).
+    /// Linux with glibc.
     Linux,
+    /// Linux with musl, which Adoptium publishes as `alpine-linux`. glibc
+    /// builds do not run here, so the distinction is not cosmetic.
+    AlpineLinux,
     /// macOS / Darwin.
     MacOs,
     /// Microsoft Windows.
@@ -31,6 +34,8 @@ impl Platform {
             Platform::MacOs
         } else if cfg!(target_os = "android") || crate::discovery::termux::is_termux() {
             Platform::Termux
+        } else if cfg!(all(target_os = "linux", target_env = "musl")) {
+            Platform::AlpineLinux
         } else if cfg!(target_os = "linux") {
             Platform::Linux
         } else {
@@ -42,6 +47,7 @@ impl Platform {
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
             "linux" => Platform::Linux,
+            "alpine-linux" | "alpine" | "musl" => Platform::AlpineLinux,
             "mac" | "macos" | "darwin" | "osx" => Platform::MacOs,
             "windows" | "win" | "win32" => Platform::Windows,
             "android" | "termux" => Platform::Termux,
@@ -49,10 +55,30 @@ impl Platform {
         }
     }
 
+    /// `true` when a JDK built for `self` is usable on `other`.
+    ///
+    /// A JDK's `release` file reports plain `Linux` on Alpine too, so the
+    /// musl distinction cannot be recovered from metadata and the two are
+    /// treated as interchangeable when comparing a discovered installation
+    /// against a request.
+    pub fn is_compatible_with(self, other: Platform) -> bool {
+        if self == other {
+            return true;
+        }
+        matches!(
+            (self, other),
+            (Platform::Linux, Platform::AlpineLinux)
+                | (Platform::AlpineLinux, Platform::Linux)
+                | (Platform::Linux, Platform::Termux)
+                | (Platform::Termux, Platform::Linux)
+        )
+    }
+
     /// The token the Adoptium API uses for this platform.
     pub fn adoptium_os(self) -> Option<&'static str> {
         match self {
             Platform::Linux | Platform::Termux => Some("linux"),
+            Platform::AlpineLinux => Some("alpine-linux"),
             Platform::MacOs => Some("mac"),
             Platform::Windows => Some("windows"),
             Platform::Unknown => None,
@@ -64,6 +90,7 @@ impl fmt::Display for Platform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Platform::Linux => "linux",
+            Platform::AlpineLinux => "alpine-linux",
             Platform::MacOs => "mac",
             Platform::Windows => "windows",
             Platform::Termux => "termux",

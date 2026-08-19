@@ -137,7 +137,9 @@ impl JavaQuery {
             }
         }
         if let Some(platform) = self.platform {
-            if install.platform != Platform::Unknown && install.platform != platform {
+            if install.platform != Platform::Unknown
+                && !install.platform.is_compatible_with(platform)
+            {
                 return false;
             }
         }

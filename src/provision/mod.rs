@@ -12,7 +12,7 @@ pub mod archive;
 #[cfg(feature = "install")]
 pub mod download;
 
-pub use provider::{JdkProvider, JdkRelease, ReleaseRequest, Vendor, VersionSpec};
+pub use provider::{JdkProvider, JdkRelease, ReleaseRequest, ReleaseType, Vendor, VersionSpec};
 
 #[cfg(feature = "install")]
 mod installer {
@@ -304,7 +304,9 @@ mod installer {
                 request.architecture, install.architecture
             )));
         }
-        if install.platform != Platform::Unknown && install.platform != request.platform {
+        if install.platform != Platform::Unknown
+            && !install.platform.is_compatible_with(request.platform)
+        {
             return Err(Error::ValidationFailed(format!(
                 "expected {}, found {}",
                 request.platform, install.platform
