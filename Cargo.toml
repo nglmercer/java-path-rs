@@ -31,6 +31,11 @@ flate2 = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# Tests build their own archives rather than shelling out to `tar`, which is
+# neither present nor GNU-compatible on every CI target.
+tar = "0.4"
+flate2 = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [[example]]
 name = "discover"

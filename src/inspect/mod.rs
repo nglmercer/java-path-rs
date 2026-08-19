@@ -227,7 +227,7 @@ fn version_from_name(name: &str) -> Option<JavaVersion> {
         if let Ok(v) = JavaVersion::parse(token) {
             let better = match &best {
                 None => true,
-                Some(prev) => token.matches('.').count() > prev.raw.matches('.').count(),
+                Some(prev) => token.matches('.').count() > prev.raw().matches('.').count(),
             };
             if better {
                 best = Some(v);

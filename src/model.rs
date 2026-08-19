@@ -243,7 +243,7 @@ impl JavaInstallation {
 
     /// Feature/major version number.
     pub fn major(&self) -> u32 {
-        self.version.major
+        self.version.major()
     }
 
     pub(crate) fn from_metadata(

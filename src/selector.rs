@@ -97,17 +97,17 @@ impl JavaQuery {
     /// `true` when the installation satisfies every constraint.
     pub fn matches(&self, install: &JavaInstallation) -> bool {
         if let Some(major) = self.major {
-            if install.version.major != major {
+            if install.version.major() != major {
                 return false;
             }
         }
         if let Some(min) = self.min_major {
-            if install.version.major < min {
+            if install.version.major() < min {
                 return false;
             }
         }
         if let Some(max) = self.max_major {
-            if install.version.major > max {
+            if install.version.major() > max {
                 return false;
             }
         }

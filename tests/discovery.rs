@@ -8,7 +8,7 @@ fn fixtures() -> PathBuf {
 #[test]
 fn finds_every_fixture_under_a_custom_root() {
     let installs = Discovery::only_roots().root(fixtures()).search().unwrap();
-    let majors: Vec<u32> = installs.iter().map(|i| i.version.major).collect();
+    let majors: Vec<u32> = installs.iter().map(|i| i.version.major()).collect();
     for expected in [8, 11, 17, 21, 22] {
         assert!(
             majors.contains(&expected),
@@ -60,4 +60,49 @@ fn missing_roots_are_ignored() {
 fn default_discovery_does_not_error() {
     // The host may or may not have a JDK; discovery must never fail because of it.
     assert!(Discovery::new().search().is_ok());
+}
+
+/// Asserts that the JDK the environment advertises is actually discovered.
+///
+/// CI sets `JAVA_HOME` via `setup-java` and `EXPECTED_JAVA_MAJOR` to the
+/// matrix version, which turns the real-JDK legs into a genuine assertion
+/// rather than a smoke test that passes on zero results.
+#[test]
+fn discovers_the_jdk_named_by_java_home() {
+    let Some(java_home) = std::env::var_os("JAVA_HOME") else {
+        eprintln!("JAVA_HOME unset; skipping");
+        return;
+    };
+    let java_home = PathBuf::from(java_home);
+
+    let installs = Discovery::new().search().unwrap();
+    assert!(
+        !installs.is_empty(),
+        "JAVA_HOME is set but nothing was discovered"
+    );
+
+    let found = installs
+        .iter()
+        .find(|i| i.source == DiscoverySource::JavaHome)
+        .unwrap_or_else(|| {
+            panic!(
+                "JAVA_HOME={} was not discovered; found {:?}",
+                java_home.display(),
+                installs.iter().map(|i| &i.home).collect::<Vec<_>>()
+            )
+        });
+
+    if let Ok(expected) = std::env::var("EXPECTED_JAVA_MAJOR") {
+        let expected: u32 = expected
+            .parse()
+            .expect("EXPECTED_JAVA_MAJOR must be a number");
+        assert_eq!(
+            found.version.major(),
+            expected,
+            "discovered {} at {}, expected major {expected}",
+            found.version,
+            found.home.display()
+        );
+    }
+    assert!(found.home.is_dir());
 }

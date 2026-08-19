@@ -28,7 +28,7 @@ fn rejects_invalid_java_version() {
 #[test]
 fn inspects_temurin_8() {
     let install = inspect_java_home(fixture("jdk-8u412-b08")).unwrap();
-    assert_eq!(install.version.major, 8);
+    assert_eq!(install.version.major(), 8);
     assert_eq!(install.vendor.as_deref(), Some("Temurin"));
     assert_eq!(install.architecture, Architecture::X86_64);
     assert_eq!(install.platform, Platform::Linux);
@@ -38,7 +38,7 @@ fn inspects_temurin_8() {
 #[test]
 fn inspects_temurin_17() {
     let install = inspect_java_home(fixture("jdk-17.0.10+7")).unwrap();
-    assert_eq!(install.version.major, 17);
+    assert_eq!(install.version.major(), 17);
     assert_eq!(install.vendor.as_deref(), Some("Eclipse Adoptium"));
     assert!(install.javac.is_some());
 }
@@ -46,7 +46,7 @@ fn inspects_temurin_17() {
 #[test]
 fn inspects_oracle_21() {
     let install = inspect_java_home(fixture("jdk-21.0.3")).unwrap();
-    assert_eq!(install.version.major, 21);
+    assert_eq!(install.version.major(), 21);
     assert_eq!(install.architecture, Architecture::Aarch64);
     assert_eq!(install.platform, Platform::MacOs);
 }
@@ -73,7 +73,7 @@ fn malformed_release_falls_back_to_path_heuristics() {
 #[test]
 fn missing_release_uses_directory_name() {
     let install = inspect_java_home(fixture("no-release/java-11-openjdk-amd64")).unwrap();
-    assert_eq!(install.version.major, 11);
+    assert_eq!(install.version.major(), 11);
     assert_eq!(install.architecture, Architecture::X86_64);
 }
 

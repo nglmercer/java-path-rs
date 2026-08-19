@@ -18,7 +18,7 @@ fn home_name(install: &java_path::JavaInstallation) -> String {
 fn selects_exact_major() {
     let installs = installs();
     let java = installs.select().major(17).best().unwrap();
-    assert_eq!(java.version.major, 17);
+    assert_eq!(java.version.major(), 17);
 }
 
 #[test]
@@ -82,12 +82,12 @@ fn min_major_and_range() {
     assert!(installs
         .iter()
         .filter(|i| JavaQuery::new().min_major(17).matches(i))
-        .all(|i| i.version.major >= 17));
+        .all(|i| i.version.major() >= 17));
 
     assert!(installs
         .iter()
         .filter(|i| JavaQuery::new().major_range(11, 17).matches(i))
-        .all(|i| (11..=17).contains(&i.version.major)));
+        .all(|i| (11..=17).contains(&i.version.major())));
 }
 
 #[test]

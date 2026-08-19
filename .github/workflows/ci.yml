@@ -28,11 +28,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       # Networking must stay optional: each feature has to build on its own.
+      # --no-default-features is what makes these isolation checks: without it
+      # the default features stay enabled and nothing is actually isolated.
       - run: cargo check --no-default-features
-      - run: cargo check --features serde
-      - run: cargo check --features network
-      - run: cargo check --features install
-      - run: cargo check --features termux
+      - run: cargo check --no-default-features --features serde
+      - run: cargo check --no-default-features --features network
+      - run: cargo check --no-default-features --features install
+      - run: cargo check --no-default-features --features termux
+      - run: cargo check --all-features
 
   test:
     # Every Java version on Linux, plus one version on each other target.
@@ -57,7 +60,11 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
+      # EXPECTED_JAVA_MAJOR turns the real-JDK legs into a real assertion:
+      # discovery must find the JDK setup-java installed, at the right version.
       - run: cargo test --all-features
+        env:
+          EXPECTED_JAVA_MAJOR: ${{ matrix.java }}
       - run: cargo run --example discover
 
   msrv:
