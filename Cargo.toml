@@ -1,0 +1,43 @@
+[package]
+name = "java-path"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Discover, inspect, select, download and provision JVM/JDK installations across platforms"
+license = "MIT"
+repository = "https://github.com/nglmercer/java-path-rs"
+keywords = ["java", "jdk", "jvm", "adoptium", "temurin"]
+categories = ["development-tools"]
+
+[features]
+default = ["discovery"]
+discovery = []
+serde = ["dep:serde"]
+network = ["dep:reqwest", "dep:tokio", "dep:serde", "dep:serde_json", "dep:sha2"]
+install = ["network", "dep:zip", "dep:tar", "dep:flate2", "dep:futures-util"]
+termux = []
+
+[dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"], optional = true }
+tokio = { version = "1", features = ["fs", "io-util", "rt"], optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
+zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+tar = { version = "0.4", optional = true }
+flate2 = { version = "1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "discover"
+
+[[example]]
+name = "select_java_21"
+
+[[example]]
+name = "install_temurin"
+required-features = ["install"]

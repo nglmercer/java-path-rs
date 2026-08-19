@@ -1,0 +1,4 @@
+JAVA_VERSION="22-ea"
+OS_ARCH="x86_64"
+OS_NAME="Linux"
+IMPLEMENTOR="Eclipse Adoptium"

@@ -1,0 +1,115 @@
+//! The vendor-agnostic JDK provider abstraction.
+
+use crate::error::Result;
+use crate::model::{Architecture, JavaKind, Platform};
+use std::future::Future;
+
+/// A JDK distribution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum Vendor {
+    /// Eclipse Temurin, via the Adoptium API.
+    #[default]
+    Temurin,
+}
+
+impl Vendor {
+    /// The Adoptium API name for this distribution.
+    pub fn api_name(self) -> &'static str {
+        match self {
+            Vendor::Temurin => "temurin",
+        }
+    }
+}
+
+/// What a caller wants to install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseRequest {
+    /// Feature version, e.g. `21`. `None` means "latest LTS".
+    pub major: Option<u32>,
+    /// Target platform.
+    pub platform: Platform,
+    /// Target architecture.
+    pub architecture: Architecture,
+    /// JDK or JRE image.
+    pub kind: JavaKind,
+    /// Include early-access builds.
+    pub include_prerelease: bool,
+}
+
+impl Default for ReleaseRequest {
+    fn default() -> Self {
+        ReleaseRequest {
+            major: None,
+            platform: Platform::current(),
+            architecture: Architecture::current(),
+            kind: JavaKind::Jdk,
+            include_prerelease: false,
+        }
+    }
+}
+
+impl ReleaseRequest {
+    /// Request a specific feature version.
+    pub fn major(mut self, major: u32) -> Self {
+        self.major = Some(major);
+        self
+    }
+
+    /// Request a JRE image instead of a JDK.
+    pub fn jre(mut self) -> Self {
+        self.kind = JavaKind::Jre;
+        self
+    }
+}
+
+/// A downloadable JDK build.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JdkRelease {
+    /// Release name as published by the vendor, e.g. `jdk-21.0.3+9`.
+    pub release_name: String,
+    /// Version string, e.g. `21.0.3+9`.
+    pub version: String,
+    /// Feature version.
+    pub major: u32,
+    /// Direct download URL of the archive.
+    pub url: String,
+    /// File name of the archive.
+    pub file_name: String,
+    /// SHA-256 hex digest of the archive, when published.
+    pub sha256: Option<String>,
+    /// Archive size in bytes, when published.
+    pub size: Option<u64>,
+    /// Target platform.
+    pub platform: Platform,
+    /// Target architecture.
+    pub architecture: Architecture,
+    /// JDK or JRE image.
+    pub kind: JavaKind,
+    /// `true` for long-term-support feature versions.
+    pub lts: bool,
+}
+
+/// A source of downloadable JDK builds.
+pub trait JdkProvider {
+    /// List the releases matching `request`, newest first.
+    fn releases(
+        &self,
+        request: ReleaseRequest,
+    ) -> impl Future<Output = Result<Vec<JdkRelease>>> + Send;
+
+    /// The single best release for `request`.
+    fn resolve(&self, request: ReleaseRequest) -> impl Future<Output = Result<JdkRelease>> + Send
+    where
+        Self: Sync,
+    {
+        async move {
+            let description = format!("{request:?}");
+            self.releases(request)
+                .await?
+                .into_iter()
+                .next()
+                .ok_or(crate::error::Error::NoRelease(description))
+        }
+    }
+}

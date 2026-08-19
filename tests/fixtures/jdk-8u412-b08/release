@@ -1,0 +1,4 @@
+JAVA_VERSION="1.8.0_412"
+OS_NAME="Linux"
+OS_ARCH="x86_64"
+IMPLEMENTOR="Temurin"
