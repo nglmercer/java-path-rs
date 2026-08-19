@@ -35,16 +35,20 @@ jobs:
       - run: cargo check --features termux
 
   test:
+    # Every Java version on Linux, plus one version on each other target.
+    # A bare `include:` of OSes does NOT cross-product with `java:` -- it
+    # collapses to a single OS, which silently skipped Windows and macOS.
+    name: test ${{ matrix.os }} / java ${{ matrix.java }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-          - os: ubuntu-24.04-arm
-          - os: windows-latest
-          - os: macos-13    # x86_64
-          - os: macos-14    # arm64
+        os: [ubuntu-latest]
         java: ["8", "11", "17", "21", "25"]
+        include:
+          - { os: ubuntu-24.04-arm, java: "21" }
+          - { os: windows-latest, java: "21" }   # exercises the .zip path
+          - { os: macos-13, java: "21" }         # x86_64
+          - { os: macos-14, java: "21" }         # arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
