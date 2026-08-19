@@ -24,6 +24,13 @@ impl Vendor {
             Vendor::Temurin => "eclipse",
         }
     }
+
+    /// Short, filesystem-safe name used in installation directory names.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Vendor::Temurin => "temurin",
+        }
+    }
 }
 
 /// Which feature version to install.
@@ -110,6 +117,8 @@ impl ReleaseRequest {
 /// A downloadable JDK build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JdkRelease {
+    /// The distribution this build came from.
+    pub vendor: Vendor,
     /// Release name as published by the vendor, e.g. `jdk-21.0.3+9`.
     pub release_name: String,
     /// Version string, e.g. `21.0.3+9`.

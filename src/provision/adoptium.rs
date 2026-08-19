@@ -152,6 +152,7 @@ impl JdkProvider for AdoptiumProvider {
                     continue;
                 };
                 releases.push(JdkRelease {
+                    vendor: self.vendor,
                     release_name: asset.release_name.clone(),
                     version: asset
                         .version_data

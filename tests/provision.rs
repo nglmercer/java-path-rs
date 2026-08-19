@@ -297,3 +297,185 @@ fn refuses_a_symlink_pointing_outside_the_destination() {
         "{err}"
     );
 }
+
+// --- installer trust boundary -------------------------------------------------
+
+use java_path::provision::provider::{JdkProvider, JdkRelease, ReleaseRequest, Vendor};
+use java_path::{Architecture, JavaInstaller, JavaKind, Platform};
+
+fn release(file_name: &str, release_name: &str, sha256: Option<&str>) -> JdkRelease {
+    JdkRelease {
+        vendor: Vendor::Temurin,
+        release_name: release_name.to_string(),
+        version: "21.0.3+9".to_string(),
+        major: 21,
+        url: "http://127.0.0.1:1/x".to_string(),
+        file_name: file_name.to_string(),
+        sha256: sha256.map(|s| s.to_string()),
+        size: None,
+        platform: Platform::current(),
+        architecture: Architecture::current(),
+        kind: JavaKind::Jdk,
+        lts: true,
+    }
+}
+
+/// A provider that hands back exactly what the test wants, including hostile
+/// values a real provider should never send.
+struct FakeProvider(JdkRelease);
+
+impl JdkProvider for FakeProvider {
+    async fn releases(&self, _request: ReleaseRequest) -> java_path::Result<Vec<JdkRelease>> {
+        Ok(vec![self.0.clone()])
+    }
+}
+
+#[test]
+fn target_dir_name_distinguishes_builds_that_differ_only_by_target() {
+    let mut a = release("x.tar.gz", "jdk-21.0.3+9", None);
+    let name_a = java_path::target_dir_name(&a);
+    assert!(name_a.starts_with("temurin-21.0.3"), "{name_a}");
+
+    // Same release name, different image type and architecture: must not collide.
+    a.kind = JavaKind::Jre;
+    assert_ne!(name_a, java_path::target_dir_name(&a));
+
+    let mut b = release("x.tar.gz", "jdk-21.0.3+9", None);
+    b.architecture = Architecture::Aarch64;
+    assert_ne!(name_a, java_path::target_dir_name(&b));
+
+    let mut c = release("x.tar.gz", "jdk-21.0.3+9", None);
+    c.platform = Platform::Windows;
+    assert_ne!(name_a, java_path::target_dir_name(&c));
+}
+
+#[tokio::test]
+async fn refuses_provider_filenames_that_escape_the_install_directory() {
+    let dir = scratch("hostile-name");
+    for (file_name, release_name) in [
+        ("../../evil.tar.gz", "jdk-21.0.3+9"),
+        ("jdk.tar.gz", "../../evil"),
+        ("/etc/passwd", "jdk-21.0.3+9"),
+        ("jdk.tar.gz", "a/b"),
+    ] {
+        let err = JavaInstaller::new(FakeProvider(release(
+            file_name,
+            release_name,
+            Some(&"a".repeat(64)),
+        )))
+        .install_dir(&dir)
+        .install()
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, java_path::Error::UnsafeProviderValue { .. }),
+            "{file_name:?}/{release_name:?} produced {err}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn refuses_a_release_without_a_checksum() {
+    let dir = scratch("no-checksum");
+    let err = JavaInstaller::new(FakeProvider(release("jdk.tar.gz", "jdk-21.0.3+9", None)))
+        .install_dir(&dir)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(matches!(err, java_path::Error::MissingChecksum(_)), "{err}");
+
+    // The escape hatch gets past the checksum gate (and fails later, on the
+    // unreachable download, which is what proves it got past it).
+    let err = JavaInstaller::new(FakeProvider(release("jdk.tar.gz", "jdk-21.0.3+9", None)))
+        .install_dir(&dir)
+        .allow_unverified(true)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(matches!(err, java_path::Error::Network(_)), "{err}");
+}
+
+#[tokio::test]
+async fn refuses_to_install_for_another_operating_system() {
+    let dir = scratch("cross-os");
+    let other = if Platform::current() == Platform::Windows {
+        Platform::Linux
+    } else {
+        Platform::Windows
+    };
+
+    let err = JavaInstaller::new(FakeProvider(release("jdk.zip", "jdk-21.0.3+9", Some("x"))))
+        .install_dir(&dir)
+        .platform(other)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::UnsupportedTarget(_)),
+        "{err}"
+    );
+
+    let err = JavaInstaller::new(FakeProvider(release(
+        "jdk.tar.gz",
+        "jdk-21.0.3+9",
+        Some("x"),
+    )))
+    .install_dir(&dir)
+    .platform(Platform::Termux)
+    .install()
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::UnsupportedTarget(_)),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn does_not_reuse_a_directory_whose_contents_do_not_match() {
+    let dir = scratch("stale-target");
+    let rel = release("jdk.tar.gz", "jdk-21.0.3+9", Some(&"a".repeat(64)));
+
+    // Plant a Java 17 JRE where the Java 21 JDK install would land.
+    let target = dir.join(java_path::target_dir_name(&rel));
+    std::fs::create_dir_all(target.join("bin")).unwrap();
+    std::fs::write(target.join("bin/java"), b"#!/bin/sh\n").unwrap();
+    std::fs::write(
+        target.join("release"),
+        b"JAVA_VERSION=\"17.0.10\"\nOS_ARCH=\"x86_64\"\nOS_NAME=\"Linux\"\n",
+    )
+    .unwrap();
+
+    // It must not be accepted as an already-satisfied install: the run should
+    // proceed to the download instead of returning the stale directory.
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::Network(_)),
+        "reused a mismatched install: {err}"
+    );
+}
+
+#[test]
+fn target_dir_name_is_clean_for_adoptium_semver() {
+    let mut rel = release("x.tar.gz", "jdk-25.0.4+7", None);
+    // What the Adoptium API actually returns in version_data.semver.
+    rel.version = "25.0.4+7.0.LTS".to_string();
+    rel.major = 25;
+    rel.kind = JavaKind::Jre;
+    rel.platform = Platform::Linux;
+    rel.architecture = Architecture::X86_64;
+    assert_eq!(
+        java_path::target_dir_name(&rel),
+        "temurin-25.0.4-linux-x64-jre"
+    );
+
+    rel.version = "26-ea+15".to_string();
+    assert_eq!(
+        java_path::target_dir_name(&rel),
+        "temurin-26-ea-linux-x64-jre"
+    );
+}

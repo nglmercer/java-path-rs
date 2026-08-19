@@ -40,7 +40,7 @@ pub use version::JavaVersion;
 #[cfg(feature = "network")]
 pub use provision::adoptium::AdoptiumProvider;
 #[cfg(feature = "install")]
-pub use provision::{InstallEvent, JavaInstaller};
+pub use provision::{target_dir_name, InstallEvent, JavaInstaller};
 pub use provision::{JdkProvider, JdkRelease, ReleaseRequest, Vendor, VersionSpec};
 
 /// Entry point combining discovery and selection.

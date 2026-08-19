@@ -61,6 +61,27 @@ pub enum Error {
     #[error("unsupported archive format: {0}")]
     UnsupportedArchive(String),
 
+    /// A provider returned a name that is not a single safe path component.
+    #[error("provider returned an unsafe {field}: {value:?}")]
+    UnsafeProviderValue {
+        /// Which field was rejected.
+        field: &'static str,
+        /// The offending value.
+        value: String,
+    },
+
+    /// A release carried no checksum and unverified installs were not allowed.
+    #[error("release {0} publishes no SHA-256 checksum; refusing to install it unverified")]
+    MissingChecksum(String),
+
+    /// The requested install target is not supported.
+    #[error("unsupported install target: {0}")]
+    UnsupportedTarget(String),
+
+    /// An installed JDK did not match what was requested.
+    #[error("installed jdk does not match the request: {0}")]
+    ValidationFailed(String),
+
     /// No release/binary was available for the requested combination.
     #[error("no jdk release available: {0}")]
     NoRelease(String),

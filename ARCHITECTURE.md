@@ -83,8 +83,9 @@ API.
 `JavaInstaller` orchestrates:
 
 ```
-resolve → download (.partial) → verify SHA-256 → extract to staging
-        → inspect → validate → atomic move → cleanup
+resolve → check provider strings → reuse check → download (.partial)
+        → verify SHA-256 → extract to staging → inspect → validate
+        → atomic move → cleanup
 ```
 
 Security properties that must not regress:
@@ -96,7 +97,20 @@ Security properties that must not regress:
   a symlink target is relative to the link's own directory (so `../java.base/LICENSE`,
   which real JDK archives contain, is legitimate), while a hard-link target is relative
   to the archive root. Only targets that escape the root are rejected;
-* extraction happens in a staging directory that is removed on both success and failure.
+* extraction happens in a unique staging directory, removed on both success and failure;
+* inspection *and* validation happen entirely inside staging, so a JDK that does not match
+  the request never reaches the final location;
+* provider-supplied `file_name` and `release_name` must each be a single ordinary path
+  component before they touch the filesystem — a provider is not trusted;
+* a release without a published SHA-256 is refused unless `allow_unverified(true)`;
+* an existing target directory is reused only after its contents are validated against
+  the request, never on the strength of its name;
+* installing for a platform other than the host is refused: the resulting JDK could
+  not be inspected or launched here anyway.
+
+The installation directory name encodes vendor, version, platform, architecture and
+image type (`temurin-25.0.4-linux-x64-jre`), so builds that differ only by target
+cannot collide.
 
 ## Feature gating
 
