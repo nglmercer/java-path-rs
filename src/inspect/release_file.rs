@@ -34,6 +34,17 @@ pub fn parse_release_contents(contents: &str) -> ReleaseProperties {
     map
 }
 
+/// `true` when the failure was simply that no `release` file exists.
+///
+/// A missing file is an ordinary situation that may fall back to another
+/// metadata source; a file that exists but is invalid is an error.
+pub fn is_missing(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound
+    )
+}
+
 /// Read and parse `<home>/release`.
 pub fn read_release_file(home: &Path) -> Result<ReleaseProperties> {
     let path = home.join("release");

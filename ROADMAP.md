@@ -115,20 +115,29 @@ Checkboxes are ticked only when the acceptance criteria pass
 - [x] `cargo test --all-features`
 - [x] `cargo doc --no-deps`
 - [x] CI matrix definition (ubuntu / windows / macOS)
-- [ ] `cargo deny check` wired into CI
+- [x] `cargo deny check` wired into CI
+- [x] Committed lockfile, with an MSRV job using `--locked` and a separate
+      latest-dependencies job
+- [x] Weekly scheduled live Adoptium tests
 - [ ] Verified against real Java 8 / 11 / 17 / 21 / 25 installs on every CI target
+      (workflow asserts it via `EXPECTED_JAVA_MAJOR`, but Actions is currently
+      blocked on a GitHub billing lock, so no leg has actually run)
 
 ## Milestones
 
-| Version | Contents | Status |
-| ------- | -------- | ------ |
-| v0.1.0 | Core models + inspection | done |
-| v0.2.0 | Cross-platform discovery | done |
-| v0.3.0 | Selection/query API | done |
-| v0.4.0 | Adoptium release API | done |
-| v0.5.0 | Download + verification | done |
-| v0.6.0 | Installation/extraction | done |
-| v0.7.0 | Termux + extra discovery sources | done |
+These are **phase targets, not releases**: nothing has been published to
+crates.io and no version has been tagged. The crate is `0.1.0` in `Cargo.toml`
+and stays there until the first actual release.
+
+| Phase target | Contents | Status |
+| ------------ | -------- | ------ |
+| v0.1.0 | Core models + inspection | complete |
+| v0.2.0 | Cross-platform discovery | complete |
+| v0.3.0 | Selection/query API | complete |
+| v0.4.0 | Adoptium release API | complete |
+| v0.5.0 | Download + verification | complete |
+| v0.6.0 | Installation/extraction | complete |
+| v0.7.0 | Termux + extra discovery sources | complete |
 | v0.8.0 | CLI / JSON agent interface | not started |
 | v0.9.x | API stabilisation + ecosystem testing | not started |
 | v1.0.0 | Stable discovery/provisioning API | blocked on real-world use |

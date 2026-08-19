@@ -195,9 +195,51 @@ impl<'a> Selector<'a> {
         self
     }
 
+    /// Require at most this feature version.
+    pub fn max_major(mut self, major: u32) -> Self {
+        self.query = self.query.max_major(major);
+        self
+    }
+
+    /// Require a feature version within `[min, max]` inclusive.
+    pub fn major_range(mut self, min: u32, max: u32) -> Self {
+        self.query = self.query.major_range(min, max);
+        self
+    }
+
+    /// Require at least this full version.
+    pub fn min_version(mut self, version: JavaVersion) -> Self {
+        self.query = self.query.min_version(version);
+        self
+    }
+
     /// Require a JDK.
     pub fn jdk(mut self) -> Self {
         self.query = self.query.jdk();
+        self
+    }
+
+    /// Require a JRE specifically.
+    pub fn jre(mut self) -> Self {
+        self.query = self.query.jre();
+        self
+    }
+
+    /// Require a specific architecture.
+    pub fn architecture(mut self, arch: Architecture) -> Self {
+        self.query = self.query.architecture(arch);
+        self
+    }
+
+    /// Require a specific platform.
+    pub fn platform(mut self, platform: Platform) -> Self {
+        self.query = self.query.platform(platform);
+        self
+    }
+
+    /// Allow early-access builds (excluded by default).
+    pub fn allow_prerelease(mut self, allow: bool) -> Self {
+        self.query = self.query.allow_prerelease(allow);
         self
     }
 

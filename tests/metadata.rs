@@ -64,10 +64,33 @@ fn detects_early_access_build() {
     assert!(install.version.is_prerelease());
 }
 
+/// AGENTS.md rule 17: a malformed `release` file is an error. Silently
+/// falling through to directory-name guessing would hide a corrupt install.
 #[test]
-fn malformed_release_falls_back_to_path_heuristics() {
-    // The directory name carries no version, so there is nothing to fall back on.
-    assert!(inspect_java_home(fixture("malformed-jdk")).is_err());
+fn malformed_release_is_an_error_not_a_fallback() {
+    let err = inspect_java_home(fixture("malformed-jdk")).unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::MalformedReleaseFile { .. }),
+        "expected a malformed-release error, got {err}"
+    );
+}
+
+/// A malformed release file must lose even when the directory name would
+/// otherwise have produced perfectly plausible metadata.
+#[test]
+fn malformed_release_wins_over_a_usable_directory_name() {
+    let dir = std::env::temp_dir().join("java-path-test-malformed-named");
+    let home = dir.join("jdk-21.0.3");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(home.join("bin")).unwrap();
+    std::fs::write(home.join("bin/java"), b"#!/bin/sh\n").unwrap();
+    std::fs::write(home.join("release"), b"garbage without any pairs\n").unwrap();
+
+    let err = inspect_java_home(&home).unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::MalformedReleaseFile { .. }),
+        "expected a malformed-release error, got {err}"
+    );
 }
 
 #[test]

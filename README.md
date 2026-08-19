@@ -28,18 +28,23 @@ println!("{}", java.home.display());
 
 ## Features
 
-| Feature     | Default | What it adds |
-| ----------- | ------- | ------------ |
-| `discovery` | yes     | Local discovery and inspection. No network, no subprocesses by default. |
-| `serde`     | no      | `Serialize`/`Deserialize` for the model types. |
-| `network`   | no      | The Adoptium release API (`AdoptiumProvider`). |
-| `install`   | no      | Download, checksum-verify and extract JDKs (`JavaInstaller`). |
-| `termux`    | no      | Termux-specific behaviour. |
+Discovery and inspection are core — always available, and they pull in no dependency
+beyond `thiserror`. Everything else is opt-in:
+
+| Feature   | What it adds |
+| --------- | ------------ |
+| `serde`   | `Serialize`/`Deserialize` for the model types. |
+| `network` | The Adoptium release API (`AdoptiumProvider`). |
+| `install` | Download, checksum-verify and extract JDKs (`JavaInstaller`). Implies `network`. |
 
 ```toml
 [dependencies]
 java-path = { version = "0.1", features = ["install"] }
 ```
+
+Minimum supported Rust version: **1.75** for the default build, **1.88** with `network`
+or `install` (a `reqwest` dependency requirement, not this crate's). Both are checked
+in CI.
 
 ## Discovery
 

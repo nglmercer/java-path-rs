@@ -11,11 +11,12 @@
 //!
 //! # Features
 //!
-//! * `discovery` (default) — local discovery and inspection, no network.
+//! Discovery and inspection are always available and pull in no dependencies
+//! beyond `thiserror`. Everything else is opt-in:
+//!
 //! * `serde` — `Serialize`/`Deserialize` for the model types.
 //! * `network` — the Adoptium release API.
-//! * `install` — download, verify and extract JDKs.
-//! * `termux` — Termux-specific behaviour.
+//! * `install` — download, verify and extract JDKs (implies `network`).
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

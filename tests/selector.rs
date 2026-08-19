@@ -103,3 +103,49 @@ fn selection_is_deterministic() {
     let b = installs.select().jdk().all();
     assert_eq!(a, b);
 }
+
+/// The fluent selector must expose everything `JavaQuery` supports; a split
+/// API where some constraints are only reachable one way is a trap.
+#[test]
+fn selector_forwards_every_query_constraint() {
+    let installs = installs();
+    use java_path::{JavaVersion, Platform};
+
+    assert!(installs
+        .select()
+        .max_major(11)
+        .all()
+        .iter()
+        .all(|i| i.version.major() <= 11));
+    assert!(installs
+        .select()
+        .major_range(11, 17)
+        .all()
+        .iter()
+        .all(|i| (11..=17).contains(&i.version.major())));
+    assert!(installs
+        .select()
+        .min_version(JavaVersion::parse("17.0.5").unwrap())
+        .all()
+        .iter()
+        .all(|i| i.version >= JavaVersion::parse("17.0.5").unwrap()));
+    assert!(installs.select().jre().all().iter().all(|i| !i.is_jdk()));
+    assert!(installs
+        .select()
+        .architecture(Architecture::Aarch64)
+        .all()
+        .iter()
+        .all(|i| i.architecture == Architecture::Aarch64));
+    assert!(installs
+        .select()
+        .platform(Platform::MacOs)
+        .all()
+        .iter()
+        .all(|i| i.platform == Platform::MacOs));
+    assert!(installs
+        .select()
+        .allow_prerelease(true)
+        .all()
+        .iter()
+        .any(|i| i.version.is_prerelease()));
+}

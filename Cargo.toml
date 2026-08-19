@@ -2,6 +2,9 @@
 name = "java-path"
 version = "0.1.0"
 edition = "2021"
+# The default (dependency-free) build works on 1.75. The `network` and
+# `install` features need 1.88, because reqwest's ICU chain requires it --
+# verified, not assumed. Both floors are checked in CI.
 rust-version = "1.75"
 description = "Discover, inspect, select, download and provision JVM/JDK installations across platforms"
 license = "MIT"
@@ -10,12 +13,13 @@ keywords = ["java", "jdk", "jvm", "adoptium", "temurin"]
 categories = ["development-tools"]
 
 [features]
-default = ["discovery"]
-discovery = []
+# Discovery and inspection are core: they need no dependency beyond thiserror,
+# so gating them behind a feature bought nothing and the "discovery" feature
+# was a no-op that compiled the modules regardless. Same for "termux".
+default = []
 serde = ["dep:serde"]
 network = ["dep:reqwest", "dep:tokio", "dep:serde", "dep:serde_json", "dep:sha2"]
 install = ["network", "dep:zip", "dep:tar", "dep:flate2", "dep:futures-util"]
-termux = []
 
 [dependencies]
 thiserror = "2"

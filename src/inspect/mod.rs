@@ -163,6 +163,10 @@ fn metadata_for(layout: &JavaLayout, options: InspectOptions) -> Result<JavaMeta
             fill_gaps(&mut meta, &layout.home);
             return Ok(meta);
         }
+        // A `release` file that exists but is malformed is an error, never a
+        // licence to guess from the directory name. Only its absence permits
+        // a fallback.
+        Err(e) if !release_file::is_missing(&e) => return Err(e),
         Err(e) => e,
     };
 

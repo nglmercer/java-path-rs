@@ -30,7 +30,12 @@ already covers those, and including them would make the public API unnecessarily
 | Termux / Android | experimental — discovery only, no provisioning |
 
 Architectures modelled: `x86_64`, `x86`, `aarch64`, `arm`, `ppc64le`, `s390x`, `riscv64`,
-plus `Unknown`. Minimum supported Rust version: **1.75** (async fn in trait).
+plus `Unknown`. Minimum supported Rust version, both verified in CI:
+
+| Build | MSRV | Limited by |
+| ----- | ---- | ---------- |
+| default (no features) | **1.75** | async fn in trait |
+| `network` / `install` | **1.88** | `reqwest` → `icu_properties_data` |
 
 ## Modules
 

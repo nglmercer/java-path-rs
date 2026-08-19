@@ -1,9 +1,14 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Live Adoptium tests weekly: they have caught two real defects, but the
+    # API is a third party and should not be able to fail an unrelated PR.
+    - cron: "0 6 * * 1"
 
 env:
   CARGO_TERM_COLOR: always
@@ -34,7 +39,6 @@ jobs:
       - run: cargo check --no-default-features --features serde
       - run: cargo check --no-default-features --features network
       - run: cargo check --no-default-features --features install
-      - run: cargo check --no-default-features --features termux
       - run: cargo check --all-features
 
   test:
@@ -67,9 +71,45 @@ jobs:
           EXPECTED_JAVA_MAJOR: ${{ matrix.java }}
       - run: cargo run --example discover
 
-  msrv:
+  # Two floors, because they genuinely differ: the dependency-free build works
+  # on 1.75, while reqwest's ICU chain drags the networking features to 1.88.
+  msrv-core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.75.0
-      - run: cargo check --all-features
+      - run: cargo check --no-default-features --locked
+
+  msrv-full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      # --locked uses the committed lockfile, so the result reflects the
+      # dependency versions we tested rather than whatever resolved today.
+      - run: cargo check --all-features --locked
+
+  # Deliberately separate from msrv: this job is *meant* to break when the
+  # ecosystem moves, so breakage is a signal rather than random CI noise.
+  latest-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo update
+      - run: cargo test --all-features
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  live:
+    # Hits api.adoptium.net, so only on the weekly schedule or by hand.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --all-features -- --ignored

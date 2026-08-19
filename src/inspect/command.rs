@@ -111,6 +111,14 @@ fn run(java: &Path, args: &[&str]) -> Result<String> {
             program: java.display().to_string(),
             reason: e.to_string(),
         })?;
+    if !output.status.success() {
+        // A launcher that failed may still have printed something parseable;
+        // trusting it would invent metadata for a broken installation.
+        return Err(Error::Command {
+            program: java.display().to_string(),
+            reason: format!("exited with {}", output.status),
+        });
+    }
     let mut text = String::from_utf8_lossy(&output.stderr).into_owned();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
     if text.trim().is_empty() {
