@@ -2,7 +2,7 @@
 
 use crate::error::{Error, Result};
 use crate::model::{Architecture, JavaKind, Platform};
-use crate::provision::provider::{JdkProvider, JdkRelease, ReleaseRequest, Vendor};
+use crate::provision::provider::{JdkProvider, JdkRelease, ReleaseRequest, Vendor, VersionSpec};
 use serde::Deserialize;
 
 /// Default Adoptium API root.
@@ -61,6 +61,16 @@ impl AdoptiumProvider {
         Ok(versions)
     }
 
+    /// The most recent feature version, LTS or not.
+    pub async fn latest_feature(&self) -> Result<u32> {
+        let info: AvailableReleases = self
+            .get_json(&format!("{}/info/available_releases", self.base_url))
+            .await?;
+        info.most_recent_feature_release
+            .or_else(|| info.available_releases.iter().copied().max())
+            .ok_or_else(|| Error::NoRelease("no feature release reported by the API".to_string()))
+    }
+
     /// The most recent LTS feature version.
     pub async fn latest_lts(&self) -> Result<u32> {
         let info: AvailableReleases = self
@@ -112,9 +122,10 @@ impl JdkProvider for AdoptiumProvider {
             JavaKind::Jre => "jre",
         };
 
-        let major = match request.major {
-            Some(major) => major,
-            None => self.latest_lts().await?,
+        let major = match request.version {
+            VersionSpec::Exact(major) => major,
+            VersionSpec::LatestLts => self.latest_lts().await?,
+            VersionSpec::Latest => self.latest_feature().await?,
         };
 
         let release_type = if request.include_prerelease {
@@ -173,6 +184,8 @@ impl JdkProvider for AdoptiumProvider {
 struct AvailableReleases {
     available_releases: Vec<u32>,
     most_recent_lts: Option<u32>,
+    #[serde(default)]
+    most_recent_feature_release: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

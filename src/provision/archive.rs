@@ -24,6 +24,51 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<()> {
     }
 }
 
+/// Lexically resolve `path` against `dest`, refusing to escape it.
+///
+/// Purely textual: it never touches the filesystem, so it is safe to call
+/// before anything has been written.
+fn resolve_within(dest: &Path, base: &Path, path: &Path) -> Option<PathBuf> {
+    let mut out = base.to_path_buf();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => out.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // Popping past the destination root is an escape.
+                if out == dest || !out.pop() || !out.starts_with(dest) {
+                    return None;
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    out.starts_with(dest).then_some(out)
+}
+
+/// Validate a link target found in an archive.
+///
+/// A symlink target is relative to the directory holding the link, so a
+/// target such as `../java.base/LICENSE` (which real JDK tarballs contain)
+/// is legitimate as long as it still resolves inside `dest`. Hard-link
+/// targets are relative to the archive root instead.
+pub fn safe_link_target(
+    dest: &Path,
+    entry: &Path,
+    link: &Path,
+    relative_to_entry: bool,
+) -> Result<PathBuf> {
+    let base = if relative_to_entry {
+        let entry_dir = entry.parent().unwrap_or(Path::new(""));
+        resolve_within(dest, dest, entry_dir)
+            .ok_or_else(|| Error::UnsafeArchiveEntry(entry.display().to_string()))?
+    } else {
+        dest.to_path_buf()
+    };
+    resolve_within(dest, &base, link)
+        .ok_or_else(|| Error::UnsafeArchiveEntry(link.display().to_string()))
+}
+
 /// Validate an archive entry path and join it onto `dest`.
 pub fn safe_join(dest: &Path, entry: &Path) -> Result<PathBuf> {
     let mut out = dest.to_path_buf();
@@ -90,11 +135,11 @@ fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<()> {
             .into_owned();
         let out = safe_join(dest, &path)?;
 
-        // Symlinks are validated against the destination root as well, so a
-        // link cannot be used to escape the extraction directory later.
+        // Link targets are validated too, so a link cannot be used to escape
+        // the extraction directory after the fact.
         if let Ok(Some(link)) = entry.link_name() {
-            safe_join(dest, &link)
-                .map_err(|_| Error::UnsafeArchiveEntry(link.display().to_string()))?;
+            let is_symlink = entry.header().entry_type().is_symlink();
+            safe_link_target(dest, &path, &link, is_symlink)?;
         }
 
         if let Some(parent) = out.parent() {

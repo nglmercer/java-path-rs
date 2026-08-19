@@ -1,6 +1,6 @@
 #![cfg(feature = "install")]
 
-use java_path::provision::archive::{extract, find_extracted_home, safe_join};
+use java_path::provision::archive::{extract, find_extracted_home, safe_join, safe_link_target};
 use java_path::provision::checksum::{sha256_file, verify_sha256};
 use std::path::{Path, PathBuf};
 
@@ -117,4 +117,85 @@ fn refuses_a_tar_entry_that_escapes_the_destination() {
 fn find_extracted_home_errors_on_an_empty_directory() {
     let dir = scratch("empty");
     assert!(find_extracted_home(&dir).is_err());
+}
+
+/// Regression: real JDK tarballs contain relative symlinks such as
+/// `legal/java.se/LICENSE -> ../java.base/LICENSE`. Rejecting every target
+/// containing `..` broke extraction of every genuine Temurin archive.
+#[test]
+fn accepts_relative_symlinks_that_stay_inside_the_root() {
+    let dest = Path::new("/tmp/dest");
+    let resolved = safe_link_target(
+        dest,
+        Path::new("jdk/legal/java.se/LICENSE"),
+        Path::new("../java.base/LICENSE"),
+        true,
+    )
+    .unwrap();
+    assert_eq!(resolved, dest.join("jdk/legal/java.base/LICENSE"));
+}
+
+#[test]
+fn rejects_symlinks_that_escape_the_root() {
+    let dest = Path::new("/tmp/dest");
+    for link in ["../../../etc/passwd", "/etc/passwd"] {
+        assert!(
+            safe_link_target(dest, Path::new("jdk/bin/java"), Path::new(link), true).is_err(),
+            "{link} should be rejected"
+        );
+    }
+    // Relative to the archive root (hard link), `..` has nothing to pop.
+    assert!(safe_link_target(dest, Path::new("jdk/x"), Path::new("../x"), false).is_err());
+}
+
+#[test]
+fn extracts_an_archive_containing_a_relative_symlink() {
+    let dir = scratch("symlink");
+    let tree = dir.join("jdk");
+    std::fs::create_dir_all(tree.join("legal/java.se")).unwrap();
+    std::fs::create_dir_all(tree.join("legal/java.base")).unwrap();
+    std::fs::write(tree.join("legal/java.base/LICENSE"), b"license").unwrap();
+    std::os::unix::fs::symlink("../java.base/LICENSE", tree.join("legal/java.se/LICENSE")).unwrap();
+
+    let archive = dir.join("jdk.tar.gz");
+    let status = std::process::Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&dir)
+        .arg("jdk")
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let out = dir.join("out");
+    extract(&archive, &out).unwrap();
+    let link = out.join("jdk/legal/java.se/LICENSE");
+    assert!(link.is_symlink());
+    assert_eq!(std::fs::read_to_string(&link).unwrap(), "license");
+}
+
+#[test]
+fn refuses_a_symlink_pointing_outside_the_destination() {
+    let dir = scratch("evil-symlink");
+    let tree = dir.join("jdk");
+    std::fs::create_dir_all(&tree).unwrap();
+    std::os::unix::fs::symlink("../../../../etc/passwd", tree.join("escape")).unwrap();
+
+    let archive = dir.join("jdk.tar.gz");
+    let status = std::process::Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&dir)
+        .arg("jdk")
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let err = extract(&archive, &dir.join("out")).unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::UnsafeArchiveEntry(_)),
+        "{err}"
+    );
 }

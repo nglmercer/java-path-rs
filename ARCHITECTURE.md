@@ -91,8 +91,11 @@ Security properties that must not regress:
 
 * a download is only renamed to its final name **after** checksum verification;
 * a checksum mismatch **deletes** the artifact;
-* every archive entry path — including symlink targets — is validated against the
-  extraction root before anything is written;
+* every archive entry path — including link targets — is validated against the
+  extraction root before anything is written. Link targets are resolved *lexically*:
+  a symlink target is relative to the link's own directory (so `../java.base/LICENSE`,
+  which real JDK archives contain, is legitimate), while a hard-link target is relative
+  to the archive root. Only targets that escape the root are rejected;
 * extraction happens in a staging directory that is removed on both success and failure.
 
 ## Feature gating

@@ -66,7 +66,7 @@ Checkboxes are ticked only when the acceptance criteria pass
 ## Phase 6 — Adoptium provider ✅ (v0.4.0)
 
 - [x] `JdkProvider` trait
-- [x] Available releases, latest GA, LTS data
+- [x] Available releases, latest GA, latest LTS, LTS data (`VersionSpec`)
 - [x] OS and architecture mapping
 - [x] JDK/JRE image selection, HotSpot
 - [x] Release metadata, artifact size, checksum
@@ -82,6 +82,7 @@ Checkboxes are ticked only when the acceptance criteria pass
 ## Phase 8 — Secure extraction/install ✅ (v0.6.0)
 
 - [x] `.zip` and `.tar.gz`
+- [x] Relative symlinks inside the root preserved (real JDK archives rely on them)
 - [x] Traversal protection for both, including symlink targets
 - [x] Extract to a staging directory, inspect, validate
 - [x] Atomic move into the final location, cleanup on failure

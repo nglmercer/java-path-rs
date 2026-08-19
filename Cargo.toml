@@ -41,3 +41,7 @@ name = "select_java_21"
 [[example]]
 name = "install_temurin"
 required-features = ["install"]
+
+[[example]]
+name = "install_latest"
+required-features = ["install"]

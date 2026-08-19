@@ -12,7 +12,7 @@ pub mod archive;
 #[cfg(feature = "install")]
 pub mod download;
 
-pub use provider::{JdkProvider, JdkRelease, ReleaseRequest, Vendor};
+pub use provider::{JdkProvider, JdkRelease, ReleaseRequest, Vendor, VersionSpec};
 
 #[cfg(feature = "install")]
 mod installer {
@@ -77,7 +77,19 @@ mod installer {
 
         /// Install a specific feature version.
         pub fn version(mut self, major: u32) -> Self {
-            self.request.major = Some(major);
+            self.request.version = VersionSpec::Exact(major);
+            self
+        }
+
+        /// Install the newest feature release, LTS or not.
+        pub fn latest(mut self) -> Self {
+            self.request.version = VersionSpec::Latest;
+            self
+        }
+
+        /// Install the newest long-term-support release. This is the default.
+        pub fn latest_lts(mut self) -> Self {
+            self.request.version = VersionSpec::LatestLts;
             self
         }
 

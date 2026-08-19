@@ -14,19 +14,51 @@ pub enum Vendor {
 }
 
 impl Vendor {
-    /// The Adoptium API name for this distribution.
+    /// The value the Adoptium API's `vendor` query parameter expects.
+    ///
+    /// Note this is the *foundation* name, not the distribution name:
+    /// Temurin builds are published under `eclipse`, and `temurin` is
+    /// rejected with a 404.
     pub fn api_name(self) -> &'static str {
         match self {
-            Vendor::Temurin => "temurin",
+            Vendor::Temurin => "eclipse",
         }
+    }
+}
+
+/// Which feature version to install.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VersionSpec {
+    /// A specific feature version, e.g. `21`.
+    Exact(u32),
+    /// The newest long-term-support release. The safe default.
+    #[default]
+    LatestLts,
+    /// The newest feature release, LTS or not.
+    Latest,
+}
+
+impl VersionSpec {
+    /// The feature version, when it is already known without a network call.
+    pub fn exact(self) -> Option<u32> {
+        match self {
+            VersionSpec::Exact(major) => Some(major),
+            _ => None,
+        }
+    }
+}
+
+impl From<u32> for VersionSpec {
+    fn from(major: u32) -> Self {
+        VersionSpec::Exact(major)
     }
 }
 
 /// What a caller wants to install.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseRequest {
-    /// Feature version, e.g. `21`. `None` means "latest LTS".
-    pub major: Option<u32>,
+    /// Which feature version to install.
+    pub version: VersionSpec,
     /// Target platform.
     pub platform: Platform,
     /// Target architecture.
@@ -40,7 +72,7 @@ pub struct ReleaseRequest {
 impl Default for ReleaseRequest {
     fn default() -> Self {
         ReleaseRequest {
-            major: None,
+            version: VersionSpec::default(),
             platform: Platform::current(),
             architecture: Architecture::current(),
             kind: JavaKind::Jdk,
@@ -52,7 +84,19 @@ impl Default for ReleaseRequest {
 impl ReleaseRequest {
     /// Request a specific feature version.
     pub fn major(mut self, major: u32) -> Self {
-        self.major = Some(major);
+        self.version = VersionSpec::Exact(major);
+        self
+    }
+
+    /// Request the newest feature release, LTS or not.
+    pub fn latest(mut self) -> Self {
+        self.version = VersionSpec::Latest;
+        self
+    }
+
+    /// Request the newest long-term-support release.
+    pub fn latest_lts(mut self) -> Self {
+        self.version = VersionSpec::LatestLts;
         self
     }
 

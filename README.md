@@ -100,11 +100,26 @@ excluded unless `allow_prerelease(true)` is set.
 ```rust
 use java_path::{InstallEvent, JavaInstaller};
 
+// .version(21) pins a feature version; .latest_lts() is the default;
+// .latest() takes the newest release, LTS or not.
 let java = JavaInstaller::adoptium()
-    .version(21)
+    .latest_lts()
     .on_event(|e| eprintln!("{e:?}"))
     .install()
     .await?;
+```
+
+To resolve the newest version without installing anything:
+
+```rust
+use java_path::{AdoptiumProvider, JdkProvider, ReleaseRequest};
+
+let provider = AdoptiumProvider::new();
+println!("latest LTS:     {}", provider.latest_lts().await?);
+println!("latest release: {}", provider.latest_feature().await?);
+
+let release = provider.resolve(ReleaseRequest::default().latest()).await?;
+println!("{} ({} bytes)", release.file_name, release.size.unwrap_or(0));
 ```
 
 The install pipeline is: resolve → download to `.partial` → SHA-256 verify → extract to
@@ -121,7 +136,16 @@ run there, so use the Termux package manager instead.
 ```bash
 cargo run --example discover
 cargo run --example select_java_21
-cargo run --example install_temurin --features install
+cargo run --example install_temurin --features install                # pinned to 21
+cargo run --example install_latest  --features install                # latest LTS
+cargo run --example install_latest  --features install -- latest      # newest overall
+cargo run --example install_latest  --features install -- dry-run     # resolve only
+```
+
+The live-network tests are `#[ignore]`d by default:
+
+```bash
+cargo test --all-features -- --ignored
 ```
 
 ## License

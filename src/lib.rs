@@ -41,7 +41,7 @@ pub use version::JavaVersion;
 pub use provision::adoptium::AdoptiumProvider;
 #[cfg(feature = "install")]
 pub use provision::{InstallEvent, JavaInstaller};
-pub use provision::{JdkProvider, JdkRelease, ReleaseRequest, Vendor};
+pub use provision::{JdkProvider, JdkRelease, ReleaseRequest, Vendor, VersionSpec};
 
 /// Entry point combining discovery and selection.
 pub struct Java;

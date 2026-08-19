@@ -16,6 +16,30 @@ fn maps_platforms_and_architectures_to_api_tokens() {
     assert_eq!(Architecture::Unknown.adoptium_arch(), None);
 }
 
+/// Regression: the Adoptium API's `vendor` parameter takes the foundation
+/// name. Sending `temurin` makes every release query 404.
+#[test]
+fn vendor_maps_to_the_api_token_not_the_distribution_name() {
+    use java_path::Vendor;
+    assert_eq!(Vendor::Temurin.api_name(), "eclipse");
+}
+
+#[test]
+fn version_spec_defaults_to_latest_lts() {
+    use java_path::{ReleaseRequest, VersionSpec};
+    assert_eq!(ReleaseRequest::default().version, VersionSpec::LatestLts);
+    assert_eq!(
+        ReleaseRequest::default().major(21).version,
+        VersionSpec::Exact(21)
+    );
+    assert_eq!(
+        ReleaseRequest::default().latest().version,
+        VersionSpec::Latest
+    );
+    assert_eq!(VersionSpec::Exact(17).exact(), Some(17));
+    assert_eq!(VersionSpec::Latest.exact(), None);
+}
+
 #[test]
 fn knows_which_versions_are_lts() {
     use java_path::AdoptiumProvider;
@@ -43,6 +67,36 @@ async fn network_failures_surface_as_network_errors() {
     let request = ReleaseRequest::default().major(21);
     let err = provider.releases(request).await.unwrap_err();
     assert!(matches!(err, java_path::Error::Network(_)), "{err}");
+}
+
+/// Hits the public Adoptium API; run with `cargo test -- --ignored`.
+#[tokio::test]
+#[ignore = "requires network access"]
+async fn resolves_the_latest_and_latest_lts_releases() {
+    use java_path::AdoptiumProvider;
+    let provider = AdoptiumProvider::new();
+
+    let lts = provider.latest_lts().await.unwrap();
+    let latest = provider.latest_feature().await.unwrap();
+    assert!(AdoptiumProvider::is_lts(lts), "{lts} should be an LTS");
+    assert!(
+        latest >= lts,
+        "latest {latest} should be >= latest LTS {lts}"
+    );
+
+    let release = provider
+        .resolve(ReleaseRequest::default().latest_lts())
+        .await
+        .unwrap();
+    assert_eq!(release.major, lts);
+    assert!(release.lts);
+    assert!(release.sha256.is_some());
+
+    let release = provider
+        .resolve(ReleaseRequest::default().latest())
+        .await
+        .unwrap();
+    assert_eq!(release.major, latest);
 }
 
 /// Hits the public Adoptium API; run with `cargo test -- --ignored`.
