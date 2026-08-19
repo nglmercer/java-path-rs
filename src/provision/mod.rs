@@ -168,6 +168,9 @@ mod installer {
 
             (self.on_event)(InstallEvent::Resolving);
             let release = self.provider.resolve(self.request.clone()).await?;
+            // A provider is untrusted: what it says it resolved is checked
+            // against what was actually asked for before anything is fetched.
+            validate_release_against_request(&release, &self.request)?;
 
             // Provider-supplied strings reach the filesystem, so they must be
             // exactly one ordinary path component.
@@ -223,8 +226,12 @@ mod installer {
                 self.install_dir
                     .join(format!(".staging-{}-{}", file_name, unique_suffix()));
             let _ = std::fs::remove_dir_all(&staging);
-            let result =
-                install_from_archive(&archive_path, &staging, &target, &release, &self.request);
+            let result = (|| {
+                // Staging is per-process, but the final target is shared: two
+                // installs of the same build must not replace it at once.
+                let _lock = TargetLock::acquire(&target)?;
+                install_from_archive(&archive_path, &staging, &target, &release, &self.request)
+            })();
             let _ = std::fs::remove_dir_all(&staging);
             let install = result?;
 
@@ -232,6 +239,114 @@ mod installer {
                 path: install.home.clone(),
             });
             Ok(install)
+        }
+    }
+
+    /// Check a provider's resolved release against the request itself.
+    ///
+    /// [`validate`] compares the *installed* JDK with `release`, which proves
+    /// nothing if `release` itself does not answer the request: a provider
+    /// asked for Java 21 could return a genuine, correctly-checksummed Java 17
+    /// build and every later check would agree with it. This is the step that
+    /// ties the provider's answer back to the caller's question.
+    fn validate_release_against_request(
+        release: &JdkRelease,
+        request: &ReleaseRequest,
+    ) -> Result<()> {
+        if let Some(major) = request.version.exact() {
+            if release.major != major {
+                return Err(Error::ValidationFailed(format!(
+                    "requested java {major}, provider resolved java {}",
+                    release.major
+                )));
+            }
+        }
+        if release.kind != request.kind {
+            return Err(Error::ValidationFailed(format!(
+                "requested a {:?}, provider resolved a {:?}",
+                request.kind, release.kind
+            )));
+        }
+        if release.platform != request.platform {
+            return Err(Error::ValidationFailed(format!(
+                "requested {}, provider resolved {}",
+                request.platform, release.platform
+            )));
+        }
+        if release.architecture != request.architecture {
+            return Err(Error::ValidationFailed(format!(
+                "requested {}, provider resolved {}",
+                request.architecture, release.architecture
+            )));
+        }
+        // The version string and the feature version must tell one story, or
+        // the directory name and the post-install check disagree.
+        let parsed = crate::version::JavaVersion::parse(&release.version)?;
+        if parsed.major() != release.major {
+            return Err(Error::ValidationFailed(format!(
+                "release claims java {} but its version is {:?}",
+                release.major, release.version
+            )));
+        }
+        Ok(())
+    }
+
+    /// An advisory, cross-process lock over one installation target.
+    ///
+    /// A lock directory created with `create_dir` is atomic on every platform
+    /// this crate supports, and is removed when the guard drops.
+    struct TargetLock {
+        path: PathBuf,
+    }
+
+    impl TargetLock {
+        /// Wait for, and take, the lock for `target`.
+        fn acquire(target: &Path) -> Result<Self> {
+            let path = lock_path(target);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
+            }
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_secs(LOCK_TIMEOUT_SECS);
+            loop {
+                match std::fs::create_dir(&path) {
+                    Ok(()) => return Ok(TargetLock { path }),
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        if std::time::Instant::now() >= deadline {
+                            return Err(Error::io(
+                                &path,
+                                std::io::Error::new(
+                                    std::io::ErrorKind::TimedOut,
+                                    "another install is holding this target; \
+                                     remove the lock directory if it is stale",
+                                ),
+                            ));
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Err(e) => return Err(Error::io(&path, e)),
+                }
+            }
+        }
+    }
+
+    impl Drop for TargetLock {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir(&self.path);
+        }
+    }
+
+    /// How long to wait for a concurrent install to release a target.
+    const LOCK_TIMEOUT_SECS: u64 = 300;
+
+    fn lock_path(target: &Path) -> PathBuf {
+        let name = target
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "target".to_string());
+        match target.parent() {
+            Some(parent) => parent.join(format!(".lock-{name}")),
+            None => PathBuf::from(format!(".lock-{name}")),
         }
     }
 
@@ -403,41 +518,15 @@ mod installer {
         extracted.to_path_buf()
     }
 
+    /// Move staging onto the target with a single rename.
+    ///
+    /// There is deliberately no recursive-copy fallback: a copy that fails
+    /// half way leaves a partially populated JDK at the final location, which
+    /// is precisely the state this crate promises never to produce. Staging
+    /// and target both live under `install_dir`, so they are always on one
+    /// filesystem and the rename is the only case that needs to work.
     fn move_dir(from: &Path, to: &Path) -> Result<()> {
-        match std::fs::rename(from, to) {
-            Ok(()) => Ok(()),
-            // Cross-device moves need a copy; fall back to a recursive copy.
-            Err(_) => {
-                copy_dir(from, to)?;
-                std::fs::remove_dir_all(from).map_err(|e| Error::io(from, e))
-            }
-        }
-    }
-
-    fn copy_dir(from: &Path, to: &Path) -> Result<()> {
-        std::fs::create_dir_all(to).map_err(|e| Error::io(to, e))?;
-        for entry in std::fs::read_dir(from).map_err(|e| Error::io(from, e))? {
-            let entry = entry.map_err(|e| Error::io(from, e))?;
-            let src = entry.path();
-            let dst = to.join(entry.file_name());
-            let file_type = entry.file_type().map_err(|e| Error::io(&src, e))?;
-            if file_type.is_dir() {
-                copy_dir(&src, &dst)?;
-            } else if file_type.is_symlink() {
-                #[cfg(unix)]
-                {
-                    let link = std::fs::read_link(&src).map_err(|e| Error::io(&src, e))?;
-                    std::os::unix::fs::symlink(link, &dst).map_err(|e| Error::io(&dst, e))?;
-                }
-                #[cfg(not(unix))]
-                {
-                    std::fs::copy(&src, &dst).map_err(|e| Error::io(&dst, e))?;
-                }
-            } else {
-                std::fs::copy(&src, &dst).map_err(|e| Error::io(&dst, e))?;
-            }
-        }
-        Ok(())
+        std::fs::rename(from, to).map_err(|e| Error::io(to, e))
     }
 
     /// The default per-user installation directory.

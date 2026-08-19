@@ -21,6 +21,8 @@ state of `main`.
   validated installation, behind `install`.
 * `VersionSpec::{Exact, LatestLts, Latest}` and `ReleaseType`.
 * `Platform::AlpineLinux` for musl targets.
+* `Java::preferred()`, the `JAVA_HOME`-first answer that `Java::current()`
+  used to give.
 
 ### Fixed
 
@@ -36,5 +38,22 @@ state of `main`.
 * Releases without a checksum were installed unverified.
 * A malformed `release` file silently fell back to directory-name guessing.
 * Failed `java` invocations were parsed instead of being treated as errors.
+* `JavaVersion`'s derived `Deserialize` could build component vectors the
+  parser never produces, reintroducing the `Eq`/`Hash` mismatch. It is now
+  serialised as its version string and read back through `JavaVersion::parse`.
+* The installer trusted the release a provider resolved; a Java 17 build could
+  satisfy a request for Java 21. Releases are now validated against the
+  request before download.
+* A failed cross-device move fell back to a recursive copy that could leave a
+  partial JDK at the final location. The commit is now a rename or nothing.
+* Concurrent installs of the same build could race on the final target; the
+  commit now takes a per-target lock.
+
+### Changed
+
+* `Java::current()` now resolves `PATH` the way a shell does — the first
+  `java` on `PATH`, not the newest — matching what its documentation claimed.
+  Use `Java::preferred()` for the previous `JAVA_HOME`-first, newest-version
+  behaviour.
 
 [Unreleased]: https://github.com/nglmercer/java-path-rs/commits/main

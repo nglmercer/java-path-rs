@@ -71,14 +71,17 @@ jobs:
           EXPECTED_JAVA_MAJOR: ${{ matrix.java }}
       - run: cargo run --example discover
 
-  # Two floors, because they genuinely differ: the dependency-free build works
-  # on 1.75, while reqwest's ICU chain drags the networking features to 1.88.
+  # Two floors, because they genuinely differ: the build without a network
+  # stack works on 1.75, while reqwest's ICU chain drags the networking
+  # features to 1.88.
   msrv-core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.75.0
       - run: cargo check --no-default-features --locked
+      # `serde` adds no network stack, so it must hold the lower floor too.
+      - run: cargo check --no-default-features --features serde --locked
 
   msrv-full:
     runs-on: ubuntu-latest

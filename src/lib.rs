@@ -53,10 +53,23 @@ impl Java {
         discovery::discover()
     }
 
-    /// The installation a plain `java` invocation would use.
+    /// The installation a plain `java` invocation would actually use.
     ///
-    /// `JAVA_HOME` wins; otherwise the first `java` on `PATH`.
+    /// This resolves `PATH` the way the shell does: the *first* `java` on
+    /// `PATH` wins, regardless of version. `JAVA_HOME` is not consulted,
+    /// because it does not decide what `java` runs — only `PATH` does; use
+    /// [`Java::preferred`] for the `JAVA_HOME`-first answer.
     pub fn current() -> Result<JavaInstallation> {
+        discovery::path::first_on_path().ok_or(Error::NoMatch)
+    }
+
+    /// The installation a caller should prefer.
+    ///
+    /// `JAVA_HOME` wins when it points at a usable Java home; otherwise this
+    /// is the newest installation reachable through `PATH`. This is the
+    /// convention most build tools follow, and it is deliberately *not* the
+    /// same question as [`Java::current`].
+    pub fn preferred() -> Result<JavaInstallation> {
         let installs = Discovery::new()
             .system_dirs(false)
             .tool_stores(false)

@@ -2,9 +2,10 @@
 name = "java-path"
 version = "0.1.0"
 edition = "2021"
-# The default (dependency-free) build works on 1.75. The `network` and
-# `install` features need 1.88, because reqwest's ICU chain requires it --
-# verified, not assumed. Both floors are checked in CI.
+# The default build pulls in no network stack (`thiserror` is its only
+# dependency) and works on 1.75. The `network` and `install` features need
+# 1.88, because reqwest's ICU chain requires it -- verified, not assumed.
+# Both floors are checked in CI.
 rust-version = "1.75"
 description = "Discover, inspect, select, download and provision JVM/JDK installations across platforms"
 license = "MIT"
@@ -40,6 +41,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tar = "0.4"
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Round-tripping the model types through a real format is the only way to
+# prove the hand-written JavaVersion serde impls hold their invariants.
+serde_json = "1"
 
 [[example]]
 name = "discover"

@@ -31,6 +31,14 @@ bug.
   the request there, so a failed install never reaches the final location.
 * Provider-supplied `file_name` and `release_name` must each be a single
   ordinary path component. Providers are not trusted.
+* The release a provider resolves is checked against the request itself —
+  feature version, image kind, platform, architecture, and the version string
+  agreeing with the declared feature version — before anything is downloaded.
+  A provider cannot answer a request for Java 21 with a Java 17 build.
+* The final installation is committed with a single rename, never a recursive
+  copy, so a failure cannot leave a partially populated JDK at the target.
+* Committing to a target is serialised by an advisory lock next to it, so
+  concurrent installs of the same build cannot interleave.
 
 **Discovery and inspection**
 

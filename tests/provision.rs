@@ -479,3 +479,296 @@ fn target_dir_name_is_clean_for_adoptium_semver() {
         "temurin-26-ea-linux-x64-jre"
     );
 }
+
+// --- lying providers ----------------------------------------------------------
+
+/// Regression: `.version(21)` must not be satisfiable by a Java 17 build.
+/// `validate()` only compares the installed JDK against the release the
+/// provider returned, so a provider that answers the wrong question passes
+/// every later check unless the release itself is matched to the request.
+#[tokio::test]
+async fn refuses_a_release_for_a_different_feature_version() {
+    let dir = scratch("lying-major");
+    let mut rel = release("jdk.tar.gz", "jdk-17.0.10+7", Some(&"a".repeat(64)));
+    rel.version = "17.0.10+7".to_string();
+    rel.major = 17;
+
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .version(21)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::ValidationFailed(_)),
+        "a java 17 release satisfied a java 21 request: {err}"
+    );
+}
+
+#[tokio::test]
+async fn refuses_a_release_for_a_different_image_kind() {
+    let dir = scratch("lying-kind");
+    // A JRE handed back to a caller who asked for a JDK.
+    let mut rel = release("jdk.tar.gz", "jdk-21.0.3+9", Some(&"a".repeat(64)));
+    rel.kind = JavaKind::Jre;
+
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .version(21)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::ValidationFailed(_)),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn refuses_a_release_for_a_different_architecture() {
+    let dir = scratch("lying-arch");
+    let mut rel = release("jdk.tar.gz", "jdk-21.0.3+9", Some(&"a".repeat(64)));
+    rel.architecture = if Architecture::current() == Architecture::Aarch64 {
+        Architecture::X86_64
+    } else {
+        Architecture::Aarch64
+    };
+
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .version(21)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::ValidationFailed(_)),
+        "{err}"
+    );
+}
+
+/// The platform check fires before the release is even resolved, but a
+/// provider that ignores the platform it was asked for must also be caught.
+#[tokio::test]
+async fn refuses_a_release_for_a_different_platform() {
+    let dir = scratch("lying-platform");
+    let mut rel = release("jdk.tar.gz", "jdk-21.0.3+9", Some(&"a".repeat(64)));
+    rel.platform = if Platform::current() == Platform::Windows {
+        Platform::Linux
+    } else {
+        Platform::Windows
+    };
+
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .version(21)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::ValidationFailed(_)),
+        "{err}"
+    );
+}
+
+/// `major` and `version` must tell the same story; the directory name comes
+/// from one and the post-install check from the other.
+#[tokio::test]
+async fn refuses_a_release_whose_version_contradicts_its_major() {
+    let dir = scratch("lying-version");
+    let mut rel = release("jdk.tar.gz", "jdk-21.0.3+9", Some(&"a".repeat(64)));
+    rel.version = "17.0.10+7".to_string();
+
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .version(21)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::ValidationFailed(_)),
+        "{err}"
+    );
+
+    // An unparsable version string is not a usable release either.
+    let mut rel = release("jdk.tar.gz", "jdk-21.0.3+9", Some(&"a".repeat(64)));
+    rel.version = "not-a-version".to_string();
+    let err = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .version(21)
+        .install()
+        .await
+        .unwrap_err();
+    assert!(matches!(err, java_path::Error::InvalidVersion(_)), "{err}");
+}
+
+/// A truthful release still reaches the download: the checks above must not
+/// be rejecting everything.
+#[tokio::test]
+async fn accepts_a_release_that_answers_the_request() {
+    let dir = scratch("honest-provider");
+    let err = JavaInstaller::new(FakeProvider(release(
+        "jdk.tar.gz",
+        "jdk-21.0.3+9",
+        Some(&"a".repeat(64)),
+    )))
+    .install_dir(&dir)
+    .version(21)
+    .install()
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, java_path::Error::Network(_)),
+        "an honest release was rejected before the download: {err}"
+    );
+}
+
+// --- atomic commit ------------------------------------------------------------
+
+/// A synthetic, checksum-matching JDK archive planted in the cache directory.
+///
+/// `download_release` returns a cached artifact whose digest matches without
+/// touching the network, so an install can be driven end to end offline.
+fn cached_release(dir: &Path) -> (JdkRelease, PathBuf) {
+    let cache = dir.join("cache");
+    std::fs::create_dir_all(&cache).unwrap();
+    let archive = cache.join("jdk.tar.gz");
+
+    // OS_NAME/OS_ARCH are left out deliberately: they parse as Unknown, which
+    // `validate` tolerates, so the fixture is host-agnostic.
+    let java: &str = if cfg!(windows) {
+        "jdk-21.0.3+9/bin/java.exe"
+    } else {
+        "jdk-21.0.3+9/bin/java"
+    };
+    let javac: &str = if cfg!(windows) {
+        "jdk-21.0.3+9/bin/javac.exe"
+    } else {
+        "jdk-21.0.3+9/bin/javac"
+    };
+    write_tar_gz(
+        &archive,
+        &[
+            Entry::File(java, b"#!/bin/sh\n"),
+            Entry::File(javac, b"#!/bin/sh\n"),
+            Entry::File(
+                "jdk-21.0.3+9/release",
+                b"JAVA_VERSION=\"21.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n",
+            ),
+        ],
+    );
+
+    let digest = sha256_file(&archive).unwrap();
+    (release("jdk.tar.gz", "jdk-21.0.3+9", Some(&digest)), cache)
+}
+
+#[tokio::test]
+async fn installs_a_verified_archive_end_to_end() {
+    let dir = scratch("offline-install");
+    let (rel, cache) = cached_release(&dir);
+    let target = dir.join(java_path::target_dir_name(&rel));
+
+    let install = JavaInstaller::new(FakeProvider(rel))
+        .install_dir(&dir)
+        .cache_dir(&cache)
+        .version(21)
+        .install()
+        .await
+        .unwrap();
+
+    assert_eq!(install.version.major(), 21);
+    assert_eq!(install.home, target);
+    assert!(target.join("release").is_file());
+    // Staging directories and the lock are cleaned up.
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+        assert!(
+            !name.starts_with(".staging-"),
+            "left staging behind: {name}"
+        );
+        assert!(!name.starts_with(".lock-"), "left a lock behind: {name}");
+    }
+}
+
+/// A second install of the same target waits for the first rather than racing
+/// it. The lock is a directory next to the target, so it is observable.
+#[test]
+fn a_held_target_lock_blocks_the_commit() {
+    let dir = scratch("target-lock");
+    let (rel, cache) = cached_release(&dir);
+    let target = dir.join(java_path::target_dir_name(&rel));
+    let lock = dir.join(format!(
+        ".lock-{}",
+        target.file_name().unwrap().to_string_lossy()
+    ));
+
+    // Stand in for an install that already holds the target.
+    std::fs::create_dir_all(&lock).unwrap();
+
+    let install_dir = dir.clone();
+    let handle = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(
+            JavaInstaller::new(FakeProvider(rel))
+                .install_dir(&install_dir)
+                .cache_dir(&cache)
+                .version(21)
+                .install(),
+        )
+    });
+
+    // It must still be waiting on the lock a moment later, with nothing at
+    // the final location.
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    assert!(!handle.is_finished(), "the target lock was not respected");
+    assert!(!target.exists(), "the target was written while locked");
+
+    std::fs::remove_dir(&lock).unwrap();
+    let install = handle.join().unwrap().unwrap();
+    assert_eq!(install.home, target);
+    assert!(
+        !lock.exists(),
+        "the lock must be released when the guard drops"
+    );
+}
+
+/// Two installs of the same release, running at once, must both end with one
+/// good JDK at the shared target rather than a half-written one.
+#[test]
+fn concurrent_installs_of_one_release_do_not_corrupt_the_target() {
+    let dir = scratch("concurrent-install");
+    let (rel, cache) = cached_release(&dir);
+    let target = dir.join(java_path::target_dir_name(&rel));
+
+    let workers: Vec<_> = (0..4)
+        .map(|_| {
+            let (rel, cache, install_dir) = (rel.clone(), cache.clone(), dir.clone());
+            std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                runtime.block_on(
+                    JavaInstaller::new(FakeProvider(rel))
+                        .install_dir(&install_dir)
+                        .cache_dir(&cache)
+                        .version(21)
+                        .install(),
+                )
+            })
+        })
+        .collect();
+
+    for worker in workers {
+        let install = worker.join().unwrap().unwrap();
+        assert_eq!(install.home, target);
+        assert_eq!(install.version.major(), 21);
+    }
+
+    // The surviving installation is complete and usable.
+    let install = java_path::inspect_java_home(&target).unwrap();
+    assert_eq!(install.version.major(), 21);
+    assert!(install.is_jdk());
+}

@@ -15,8 +15,13 @@ use std::str::FromStr;
 /// `Eq`, `Hash` and `Ord` all agree, and all ignore the original string, so
 /// `17` and `17.0.0` are the same version in a `BTreeSet` and a `HashSet`
 /// alike. Use [`JavaVersion::raw`] to recover exactly what was parsed.
+///
+/// With the `serde` feature a version is represented as its version *string*
+/// and read back through [`JavaVersion::parse`]. Deriving the impls would let
+/// deserialization construct component vectors the parser can never produce
+/// (`[17, 0, 0]`), which compare equal to `17` but hash differently — exactly
+/// the `Eq`/`Hash` contract violation the normalisation above prevents.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JavaVersion {
     /// Numeric elements with trailing zeros removed, so `17.0.0` and `17`
     /// share one representation.
@@ -239,5 +244,43 @@ impl FromStr for JavaVersion {
 impl fmt::Display for JavaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.raw)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for JavaVersion {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.raw)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for JavaVersion {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct Visitor;
+
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = JavaVersion;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a java version string such as \"21.0.3+9\"")
+            }
+
+            fn visit_str<E: serde::de::Error>(
+                self,
+                value: &str,
+            ) -> std::result::Result<JavaVersion, E> {
+                // The parser is the only way to build a JavaVersion, here as
+                // everywhere else, so its invariants cannot be bypassed.
+                JavaVersion::parse(value).map_err(serde::de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_str(Visitor)
     }
 }
