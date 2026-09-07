@@ -6,8 +6,8 @@
 
 use crate::discovery::Collector;
 use crate::model::DiscoverySource;
+use crate::process::hidden_command;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Vendor directories under the Program Files roots.
 pub const VENDOR_DIRS: &[&str] = &[
@@ -55,7 +55,9 @@ fn registry_homes() -> Vec<PathBuf> {
     }
     let mut homes = Vec::new();
     for key in REGISTRY_KEYS {
-        let Ok(output) = Command::new("reg")
+        // `hidden_command` carries CREATE_NO_WINDOW on Windows so each
+        // `reg.exe` probe stays invisible in GUI sessions.
+        let Ok(output) = hidden_command("reg")
             .args(["query", key, "/s", "/v", "JavaHome"])
             .output()
         else {

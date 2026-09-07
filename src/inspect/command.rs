@@ -4,10 +4,10 @@
 
 use crate::error::{Error, Result};
 use crate::model::{Architecture, JavaKind, JavaMetadata, Platform};
+use crate::process::hidden_command;
 use crate::version::JavaVersion;
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::Command;
 
 /// Run `java -XshowSettings:properties -version` and parse the system properties.
 ///
@@ -104,7 +104,9 @@ pub fn metadata_from_version_output(output: &str, kind: JavaKind) -> Result<Java
 }
 
 fn run(java: &Path, args: &[&str]) -> Result<String> {
-    let output = Command::new(java)
+    // `hidden_command` keeps `java.exe -version` probes invisible on Windows
+    // while still capturing piped stdout/stderr (unlike `javaw.exe`).
+    let output = hidden_command(java)
         .args(args)
         .output()
         .map_err(|e| Error::Command {

@@ -25,6 +25,7 @@ pub mod discovery;
 pub mod error;
 pub mod inspect;
 pub mod model;
+pub mod process;
 pub mod provision;
 pub mod selector;
 pub mod version;

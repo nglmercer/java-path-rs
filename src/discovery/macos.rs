@@ -2,8 +2,8 @@
 
 use crate::discovery::Collector;
 use crate::model::DiscoverySource;
+use crate::process::hidden_command;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// System-wide JVM bundle directory.
 pub const SYSTEM_ROOT: &str = "/Library/Java/JavaVirtualMachines";
@@ -31,7 +31,7 @@ fn java_home_tool() -> Vec<PathBuf> {
     if !tool.is_file() {
         return Vec::new();
     }
-    let Ok(output) = Command::new(tool).arg("-V").output() else {
+    let Ok(output) = hidden_command(tool).arg("-V").output() else {
         return Vec::new();
     };
     let text = String::from_utf8_lossy(&output.stderr);
