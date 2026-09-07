@@ -34,6 +34,13 @@ zip = { version = "2", default-features = false, features = ["deflate"], optiona
 tar = { version = "0.4", optional = true }
 flate2 = { version = "1", optional = true }
 
+# Native Windows Registry access for discovery. This is a Windows-only
+# dependency (never built on Linux/macOS, MSRV-clean there) so registry
+# discovery spawns no `reg.exe` helper and cannot flash a console window
+# in GUI sessions.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # Tests build their own archives rather than shelling out to `tar`, which is

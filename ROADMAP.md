@@ -53,7 +53,7 @@ Checkboxes are ticked only when the acceptance criteria pass
 - [x] SDKMAN!, mise/asdf, Gradle, JBang stores
 - [x] macOS bundle directories and `/usr/libexec/java_home`
 - [x] Windows Program Files vendor directories
-- [x] Windows registry via `reg.exe` (Everything SDK deliberately not required)
+- [x] Windows registry via the native Registry API, both views (no `reg.exe` subprocess)
 
 ## Phase 5 — Selection engine ✅ (v0.3.0)
 
