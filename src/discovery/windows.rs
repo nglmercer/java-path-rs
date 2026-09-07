@@ -49,6 +49,10 @@ pub fn collect(out: &mut Collector) {
 }
 
 /// Strip the `HKLM\` prefix so the remainder opens under `HKEY_LOCAL_MACHINE`.
+///
+/// Only used by the Windows registry reader; kept compiled for tests so the
+/// prefix handling stays covered on every platform.
+#[cfg(any(windows, test))]
 fn subkey_path(key: &str) -> Option<&str> {
     key.strip_prefix("HKLM\\")
         .or_else(|| key.strip_prefix("HKLM/"))
